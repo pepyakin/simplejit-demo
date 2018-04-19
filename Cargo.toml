@@ -14,7 +14,7 @@ path = "src/toy.rs"
 [dependencies]
 cretonne = "0.9.0"
 cretonne-module = "0.9.0"
-cretonne-simplejit = "0.9.0"
+cretonne-faerie = "0.9.0"
 peg = "0.5.4"
 
 [build-dependencies]
