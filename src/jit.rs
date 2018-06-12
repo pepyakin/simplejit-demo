@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use cretonne::prelude::*;
-use cretonne_module::{Module, Linkage, DataContext, Writability};
-use cretonne_faerie::{FaerieBuilder, FaerieBackend, Format};
+use cretonne_faerie::{FaerieBackend, FaerieBuilder, FaerieTrapCollection};
+use cretonne_module::{DataContext, Linkage, Module, Writability};
 use std::fs::File;
+use std::str::FromStr;
+use target_lexicon;
 
 /// The AST node for expressions.
 pub enum Expr {
@@ -61,10 +63,16 @@ impl JIT {
         // Target x86-64 for now. Also, faerie requires PIC.
         let mut flag_builder = settings::builder();
         flag_builder.enable("is_pic").unwrap();
-        let isa_builder = isa::lookup("x86-64").unwrap();
-        let isa = isa_builder.finish(settings::Flags::new(&flag_builder));
+        let isa_builder = isa::lookup(triple!("x86_64-unknown-unknown-elf")).unwrap();
+        let isa = isa_builder.finish(settings::Flags::new(flag_builder));
 
-        let builder = FaerieBuilder::new(isa, name.to_owned(), Format::ELF).unwrap();
+        let builder = FaerieBuilder::new(
+            isa,
+            name.to_owned(),
+            target_lexicon::BinaryFormat::Elf,
+            FaerieTrapCollection::Disabled,
+            FaerieBuilder::default_libcall_names(),
+        ).unwrap();
         let module = Module::new(builder);
         Self {
             builder_context: FunctionBuilderContext::<Variable>::new(),
@@ -81,9 +89,8 @@ impl JIT {
             parser::function(&input).map_err(|e| e.to_string())?;
 
         // Then, translate the AST nodes into Cretonne IR.
-        self.translate(params, the_return, stmts).map_err(
-            |e| e.to_string(),
-        )?;
+        self.translate(params, the_return, stmts)
+            .map_err(|e| e.to_string())?;
 
         // Next, declare the function to simplejit. Functions must be declared
         // before they can be called, or defined.
@@ -100,11 +107,9 @@ impl JIT {
         // cannot finish relocations until all functions to be called are
         // defined. For this toy demo for now, we'll just finalize the function
         // below.
-        self.module.define_function(id, &mut self.ctx).map_err(
-            |e| {
-                e.to_string()
-            },
-        )?;
+        self.module
+            .define_function(id, &mut self.ctx)
+            .map_err(|e| e.to_string())?;
 
         // Now that compilation is finished, we can clear out the context state.
         self.module.clear_context(&mut self.ctx);
@@ -120,17 +125,15 @@ impl JIT {
     pub fn create_data(&mut self, name: &str, contents: Vec<u8>) -> Result<(), String> {
         // The steps here are analogous to `compile`, except that data is much
         // simpler than functions.
-        self.data_ctx.define(
-            contents.into_boxed_slice(),
-            Writability::Writable,
-        );
+        self.data_ctx
+            .define(contents.into_boxed_slice(), Writability::Writable);
         let id = self.module
             .declare_data(name, Linkage::Export, true)
             .map_err(|e| e.to_string())?;
 
-        self.module.define_data(id, &self.data_ctx).map_err(
-            |e| e.to_string(),
-        )?;
+        self.module
+            .define_data(id, &self.data_ctx)
+            .map_err(|e| e.to_string())?;
         self.data_ctx.clear();
         self.module.finalize_data(id);
         Ok(())
@@ -281,11 +284,9 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Le(lhs, rhs) => {
                 let lhs = self.translate_expr(*lhs);
                 let rhs = self.translate_expr(*rhs);
-                let c = self.builder.ins().icmp(
-                    IntCC::SignedLessThanOrEqual,
-                    lhs,
-                    rhs,
-                );
+                let c = self.builder
+                    .ins()
+                    .icmp(IntCC::SignedLessThanOrEqual, lhs, rhs);
                 self.builder.ins().bint(self.int, c)
             }
 
@@ -299,11 +300,9 @@ impl<'a> FunctionTranslator<'a> {
             Expr::Ge(lhs, rhs) => {
                 let lhs = self.translate_expr(*lhs);
                 let rhs = self.translate_expr(*rhs);
-                let c = self.builder.ins().icmp(
-                    IntCC::SignedGreaterThanOrEqual,
-                    lhs,
-                    rhs,
-                );
+                let c = self.builder
+                    .ins()
+                    .icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs);
                 self.builder.ins().bint(self.int, c)
             }
 
@@ -416,10 +415,8 @@ impl<'a> FunctionTranslator<'a> {
         let callee = self.module
             .declare_function(&name, Linkage::Import, &sig)
             .expect("problem declaring function");
-        let local_callee = self.module.declare_func_in_func(
-            callee,
-            &mut self.builder.func,
-        );
+        let local_callee = self.module
+            .declare_func_in_func(callee, &mut self.builder.func);
 
         let mut arg_values = Vec::new();
         for arg in args {
@@ -433,10 +430,8 @@ impl<'a> FunctionTranslator<'a> {
         let sym = self.module
             .declare_data(&name, Linkage::Export, true)
             .expect("problem declaring data object");
-        let local_id = self.module.declare_data_in_func(
-            sym,
-            &mut self.builder.func,
-        );
+        let local_id = self.module
+            .declare_data_in_func(sym, &mut self.builder.func);
 
         let pointer = self.module.pointer_type();
         self.builder.ins().globalsym_addr(pointer, local_id)

@@ -12,9 +12,10 @@ name = "toy"
 path = "src/toy.rs"
 
 [dependencies]
-cretonne = "0.9.0"
-cretonne-module = "0.9.0"
-cretonne-faerie = "0.9.0"
+cretonne = "0.10.0"
+cretonne-module = "0.10.0"
+cretonne-faerie = "0.10.0"
+target-lexicon = "0.0.2"
 peg = "0.5.4"
 
 [build-dependencies]

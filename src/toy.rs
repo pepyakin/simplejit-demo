@@ -1,6 +1,8 @@
 extern crate cretonne;
 extern crate cretonne_module;
 extern crate cretonne_faerie;
+#[macro_use]
+extern crate target_lexicon;
 
 use std::process;
 
