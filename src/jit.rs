@@ -63,13 +63,12 @@ impl JIT {
         // Target x86-64 for now. Also, faerie requires PIC.
         let mut flag_builder = settings::builder();
         flag_builder.enable("is_pic").unwrap();
-        let isa_builder = isa::lookup(triple!("x86_64-unknown-unknown-elf")).unwrap();
+        let isa_builder = isa::lookup(triple!("x86_64-unknown-unknown-macho")).unwrap();
         let isa = isa_builder.finish(settings::Flags::new(flag_builder));
 
         let builder = FaerieBuilder::new(
             isa,
             name.to_owned(),
-            target_lexicon::BinaryFormat::Elf,
             FaerieTrapCollection::Disabled,
             FaerieBuilder::default_libcall_names(),
         ).unwrap();
